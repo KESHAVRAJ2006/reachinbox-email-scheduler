@@ -43,7 +43,9 @@ export function onUnauthorized(handler: () => void) {
 // turns non-2xx responses into ApiError.
 async function request<T>(path: string, options: { method?: string; json?: unknown } = {}): Promise<T> {
   const token = tokenStore.get();
-  const headers: Record<string, string> = {};
+  // When the API is reached through a free ngrok tunnel, ngrok answers browser requests
+  // with an HTML warning page unless this header is present. Harmless for any other host.
+  const headers: Record<string, string> = { 'ngrok-skip-browser-warning': 'true' };
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.json !== undefined) headers['Content-Type'] = 'application/json';
 
