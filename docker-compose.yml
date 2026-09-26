@@ -1,0 +1,83 @@
+# Local infrastructure for the email scheduler.
+#
+# Only the three stateful services run in Docker. The API, the worker and the
+# frontend run directly on the laptop with `npm run dev`, so code changes reload
+# instantly instead of needing an image rebuild.
+#
+#   docker compose up -d     start everything in the background
+#   docker compose ps        every service should say "(healthy)"
+#   docker compose down      stop; data survives because it lives in named volumes
+#   docker compose down -v   stop AND delete the volumes (fresh, empty databases)
+
+name: email-scheduler
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      # Local development credentials only. A real deployment injects these as secrets.
+      POSTGRES_USER: scheduler
+      POSTGRES_PASSWORD: scheduler_dev
+      POSTGRES_DB: email_scheduler
+    ports:
+      # "127.0.0.1:" publishes the port on this laptop only, not to the whole Wi-Fi network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready ships with Postgres and exits 0 once the server accepts connections.
+      test: ["CMD-SHELL", "pg_isready -U scheduler -d email_scheduler"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    # --appendonly yes          AOF persistence: every write is appended to a log on disk and
+    #                           replayed on boot, so delayed BullMQ jobs survive a Redis restart.
+    # --appendfsync everysec    flush that log to disk once a second (lose at most ~1 s on a crash).
+    # --maxmemory-policy noeviction
+    #                           when memory is full, reject new writes instead of silently deleting
+    #                           keys. BullMQ requires this: an evicted key would be a lost job.
+    command: redis-server --appendonly yes --appendfsync everysec --maxmemory-policy noeviction
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.0
+    environment:
+      # One node, no cluster discovery. This also skips the production bootstrap checks
+      # (like vm.max_map_count) that would otherwise stop it booting on Docker Desktop.
+      - discovery.type=single-node
+      # No passwords/TLS locally so we can curl it directly. Never disable this in production.
+      - xpack.security.enabled=false
+      # Cap the Java heap at 512 MB so Elasticsearch doesn't eat half the laptop's RAM.
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      # By default ES turns indices read-only when the disk is ~95% full. Laptops hit that often.
+      - cluster.routing.allocation.disk.threshold_enabled=false
+    ports:
+      - "127.0.0.1:9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      # Healthy once the cluster reports at least "yellow" (all primary shards are available).
+      test: ["CMD-SHELL", "curl -fs 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    restart: unless-stopped
+
+# Named volumes are managed by Docker and outlive the containers that use them.
+volumes:
+  pgdata:
+  redisdata:
+  esdata:

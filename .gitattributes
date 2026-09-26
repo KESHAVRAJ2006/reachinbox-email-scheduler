@@ -1,0 +1,13 @@
+# Keep every text file stored with LF line endings, on every OS.
+# Without this, Git on Windows may rewrite files to CRLF on checkout, which breaks
+# shell scripts inside Linux containers and creates noisy whole-file diffs.
+* text=auto eol=lf
+
+# Binary files are stored byte for byte and never line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.mp4 binary

@@ -1,0 +1,23 @@
+# Dependencies are reinstalled from package-lock.json, never committed.
+node_modules/
+
+# Build output is generated from source.
+dist/
+build/
+coverage/
+
+# Real environment files hold secrets and stay on this machine.
+# The .env.example templates are committed so others know what to set.
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
