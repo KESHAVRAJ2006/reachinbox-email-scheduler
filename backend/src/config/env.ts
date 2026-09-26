@@ -25,7 +25,10 @@ const envSchema = z.object({
 
   // 32+ characters so the JWT signature can't be brute-forced.
   JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
-  JWT_EXPIRES_IN: z.string().min(1).default('7d'),
+  JWT_EXPIRES_IN: z
+    .string()
+    .regex(/^\d+[smhd]$/, 'use a number followed by s, m, h or d, e.g. 7d')
+    .default('7d'),
 
   GOOGLE_CLIENT_ID: z.string().endsWith('.apps.googleusercontent.com', 'does not look like a Google OAuth client ID'),
   GOOGLE_CLIENT_SECRET: z.string().min(1),

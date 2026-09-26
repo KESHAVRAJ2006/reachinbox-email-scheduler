@@ -19,14 +19,17 @@
     "@elastic/elasticsearch": "^8.19.2",
     "cors": "^2.8.6",
     "express": "^5.2.1",
+    "google-auth-library": "^11.1.0",
     "helmet": "^8.3.0",
     "ioredis": "^6.0.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^24.19.0",
     "@types/pg": "^8.23.1",
     "tsx": "^4.23.15",
