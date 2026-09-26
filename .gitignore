@@ -12,6 +12,9 @@ coverage/
 .env.*
 !.env.example
 
+# Personal notes that stay on this machine (e.g. the demo recording script).
+*.local.md
+
 # Logs
 *.log
 npm-debug.log*

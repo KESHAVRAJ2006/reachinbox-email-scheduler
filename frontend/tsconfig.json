@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    // Vite compiles the code; TypeScript only type-checks it (noEmit).
+    "noEmit": true,
+    "target": "es2022",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    // Imports are resolved the way a bundler (Vite) resolves them.
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    // JSX becomes react/jsx-runtime calls, so files don't need `import React`.
+    "jsx": "react-jsx",
+    // Types for import.meta.env and for importing .css files.
+    "types": ["vite/client"],
+    "strict": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true
+  },
+  "include": ["src"]
+}

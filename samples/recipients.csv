@@ -1,0 +1,11 @@
+email,first_name,company
+alice@example.com,Alice,Acme
+bob@example.com,Bob,Globex
+carol@example.com,Carol,Initech
+dave@example.com,Dave,Umbrella
+erin@example.com,Erin,Hooli
+frank@example.com,Frank,Stark
+grace@example.com,Grace,Wayne
+heidi@example.com,Heidi,Wonka
+ALICE@example.com,Alice (duplicate),Acme
+not-an-email,Invalid row,None
