@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { currentUser, requireAuth } from '../auth/require-auth';
 import { createCampaignSchema, scheduleCampaign } from '../campaigns/campaigns.service';
-import { listEmailsForUser } from '../emails/emails.repository';
+import { countEmailsForUser, listEmailsForUser } from '../emails/emails.repository';
 import { searchEmails } from '../search/email-index';
 import { listSenders } from '../senders/senders.repository';
 
@@ -33,6 +33,11 @@ const listQuerySchema = z.object({
 campaignsRouter.get('/emails', requireAuth, async (req, res) => {
   const { tab, limit, offset } = listQuerySchema.parse(req.query);
   res.json(await listEmailsForUser(currentUser(req).id, tab, limit, offset));
+});
+
+// GET /api/emails/stats: counts for the dashboard cards and tab badges.
+campaignsRouter.get('/emails/stats', requireAuth, async (req, res) => {
+  res.json(await countEmailsForUser(currentUser(req).id));
 });
 
 // GET /api/emails/search?q=welcome&tab=sent: full-text search via Elasticsearch

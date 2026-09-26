@@ -140,6 +140,18 @@ export async function findPendingEmails(
   return rows.map((row) => ({ id: row.id, scheduledAt: row.scheduled_at }));
 }
 
+// Numbers for the dashboard's summary cards and tab badges, in one query.
+export async function countEmailsForUser(userId: string): Promise<{ scheduled: number; sent: number; failed: number }> {
+  const { rows } = await pool.query<{ scheduled: number; sent: number; failed: number }>(
+    `SELECT count(*) FILTER (WHERE status IN ('scheduled', 'sending'))::int AS scheduled,
+            count(*) FILTER (WHERE status = 'sent')::int AS sent,
+            count(*) FILTER (WHERE status = 'failed')::int AS failed
+       FROM emails WHERE user_id = $1`,
+    [userId],
+  );
+  return rows[0];
+}
+
 export type EmailListItem = {
   id: string;
   recipient: string;
