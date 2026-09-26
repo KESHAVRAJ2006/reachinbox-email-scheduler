@@ -5,6 +5,7 @@ import { runMigrations } from './db/migrate';
 import { pool } from './db/pool';
 import { redis } from './lib/redis';
 import { elastic } from './lib/elastic';
+import { closeEmailQueue } from './queue/email-queue';
 
 async function main() {
   // Bring the schema up to date before accepting traffic. Safe to run on every boot:
@@ -30,7 +31,7 @@ async function main() {
     console.log(`[api] ${signal} received, shutting down`);
 
     server.close(async () => {
-      await Promise.allSettled([pool.end(), redis.quit(), elastic.close()]);
+      await Promise.allSettled([closeEmailQueue(), pool.end(), redis.quit(), elastic.close()]);
       process.exit(0);
     });
     // If something hangs, don't wait forever. unref() stops this timer keeping Node alive.
