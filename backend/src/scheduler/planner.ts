@@ -13,6 +13,17 @@ export function hourWindow(timestampMs: number): number {
   return Math.floor(timestampMs / HOUR_MS);
 }
 
+/**
+ * Where the worker moves an email that didn't fit in its sender's hourly cap:
+ * the start of the next hour, plus 1 ms for every second the email was originally
+ * scheduled into the current hour. So emails that overflow together keep their
+ * original order, and all of them land in the first ~3.6 s of the next hour.
+ */
+export function overflowSendTime(originalScheduledAt: number, fullWindow: number): number {
+  const secondsIntoWindow = Math.floor(Math.max(0, originalScheduledAt - fullWindow * HOUR_MS) / 1000);
+  return (fullWindow + 1) * HOUR_MS + Math.min(secondsIntoWindow, 3599);
+}
+
 export type PlanInput = {
   count: number; // how many emails
   startAt: number; // epoch ms of the first send

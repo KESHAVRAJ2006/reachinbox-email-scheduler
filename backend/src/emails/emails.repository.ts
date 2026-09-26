@@ -8,6 +8,8 @@ export type EmailStatus = 'scheduled' | 'sending' | 'sent' | 'failed';
 
 export type ClaimedEmail = {
   id: string;
+  userId: string;
+  scheduledAt: Date;
   recipient: string;
   subject: string;
   body: string;
@@ -29,9 +31,9 @@ export async function claimEmail(emailId: string): Promise<ClaimedEmail | null> 
        UPDATE emails
           SET status = 'sending', claimed_at = now(), attempts = attempts + 1, updated_at = now()
         WHERE id = $1 AND status = 'scheduled'
-        RETURNING id, recipient, campaign_id, sender_id
+        RETURNING id, user_id, scheduled_at, recipient, campaign_id, sender_id
      )
-     SELECT c.id, c.recipient, cp.subject, cp.body,
+     SELECT c.id, c.user_id, c.scheduled_at, c.recipient, cp.subject, cp.body,
             s.id AS sender_id, s.name AS sender_name, s.email AS sender_email,
             s.smtp_host, s.smtp_port, s.smtp_user, s.smtp_pass
        FROM claimed c
@@ -43,6 +45,8 @@ export async function claimEmail(emailId: string): Promise<ClaimedEmail | null> 
   if (!row) return null;
   return {
     id: row.id,
+    userId: row.user_id,
+    scheduledAt: row.scheduled_at,
     recipient: row.recipient,
     subject: row.subject,
     body: row.body,
@@ -78,6 +82,18 @@ export async function releaseForRetry(emailId: string, error: string): Promise<v
     `UPDATE emails SET status = 'scheduled', last_error = $2, updated_at = now()
       WHERE id = $1 AND status = 'sending'`,
     [emailId, error],
+  );
+}
+
+// The sender's hourly cap is full: give the claim back and record the new send time,
+// so the dashboard shows when it will really go out. This is not a failed attempt,
+// so the attempt counter the claim added is undone.
+export async function deferEmail(emailId: string, newScheduledAt: Date): Promise<void> {
+  await pool.query(
+    `UPDATE emails
+        SET status = 'scheduled', scheduled_at = $2, attempts = attempts - 1, claimed_at = NULL, updated_at = now()
+      WHERE id = $1 AND status = 'sending'`,
+    [emailId, newScheduledAt],
   );
 }
 

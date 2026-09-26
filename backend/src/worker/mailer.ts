@@ -1,5 +1,6 @@
 import nodemailer, { type SentMessageInfo, type Transporter } from 'nodemailer';
 import type { ClaimedEmail } from '../emails/emails.repository';
+import { LOAD_TEST_SMTP_HOST } from '../senders/senders.repository';
 
 // One SMTP transport per sender, created on first use and reused. `pool: true`
 // keeps SMTP connections open between emails instead of reconnecting (TCP + TLS
@@ -8,6 +9,12 @@ const transports = new Map<string, Transporter>();
 
 function transportFor(sender: ClaimedEmail['sender']): Transporter {
   let transport = transports.get(sender.id);
+  if (!transport && sender.smtpHost === LOAD_TEST_SMTP_HOST) {
+    // Load-test senders: build the full message but don't open a network
+    // connection, so 1000-email tests don't flood Ethereal.
+    transport = nodemailer.createTransport({ jsonTransport: true });
+    transports.set(sender.id, transport);
+  }
   if (!transport) {
     transport = nodemailer.createTransport({
       host: sender.smtpHost,

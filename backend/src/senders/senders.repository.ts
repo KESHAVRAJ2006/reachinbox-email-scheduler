@@ -1,10 +1,19 @@
 import { pool } from '../db/pool';
 
+// Senders with this SMTP host are load-test doubles: the mailer builds their
+// messages but never sends them. ".invalid" is a reserved domain that can never
+// resolve, so a real connection to it is impossible even by mistake.
+export const LOAD_TEST_SMTP_HOST = 'loadtest.invalid';
+
 // What the API may show. SMTP credentials never leave the backend.
 export type PublicSender = { id: string; name: string; email: string };
 
+// Load-test doubles are hidden from the Compose form.
 export async function listSenders(): Promise<PublicSender[]> {
-  const { rows } = await pool.query<PublicSender>('SELECT id, name, email FROM senders ORDER BY created_at');
+  const { rows } = await pool.query<PublicSender>(
+    'SELECT id, name, email FROM senders WHERE smtp_host <> $1 ORDER BY created_at',
+    [LOAD_TEST_SMTP_HOST],
+  );
   return rows;
 }
 

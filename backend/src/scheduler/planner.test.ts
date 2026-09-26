@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HOUR_MS, hourWindow, planSendTimes } from './planner';
+import { HOUR_MS, hourWindow, overflowSendTime, planSendTimes } from './planner';
 
 const at = (iso: string) => Date.parse(iso);
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -26,6 +26,18 @@ test('crossing an hour boundary through the delay resets the budget', () => {
   // and nothing needs to jump.
   const times = planSendTimes({ count: 2, startAt: at('2026-01-01T10:59:58Z'), delayBetweenMs: 2000, hourlyLimit: 1 });
   assert.deepEqual(times.map(iso), ['2026-01-01T10:59:58.000Z', '2026-01-01T11:00:00.000Z']);
+});
+
+test('overflow goes to the start of the next hour, keeping the original order', () => {
+  const window = hourWindow(at('2026-01-01T10:00:00Z'));
+  const early = overflowSendTime(at('2026-01-01T10:15:00Z'), window);
+  const late = overflowSendTime(at('2026-01-01T10:45:30Z'), window);
+  assert.equal(iso(early), '2026-01-01T11:00:00.900Z'); // 15 min = 900 s -> +900 ms
+  assert.equal(iso(late), '2026-01-01T11:00:02.730Z'); // 45.5 min = 2730 s -> +2730 ms
+  assert.ok(early < late);
+  // Overdue from an earlier hour (e.g. the worker was down): front of the next hour.
+  assert.equal(iso(overflowSendTime(at('2026-01-01T08:30:00Z'), window)), '2026-01-01T11:00:00.000Z');
+  assert.equal(hourWindow(late), window + 1);
 });
 
 test('never exceeds the limit in any hour and never reorders (randomised)', () => {

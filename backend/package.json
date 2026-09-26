@@ -16,6 +16,7 @@
     "worker": "node dist/worker.js",
     "migrate": "tsx src/db/migrate.ts",
     "seed:senders": "tsx src/senders/seed-senders.ts",
+    "loadtest": "tsx src/tools/load-test.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },

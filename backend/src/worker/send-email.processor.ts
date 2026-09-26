@@ -1,13 +1,16 @@
-import type { Job } from 'bullmq';
-import { claimEmail, getEmailStatus, markFailed, markSent, releaseForRetry } from '../emails/emails.repository';
+import { DelayedError, type Job } from 'bullmq';
+import { claimEmail, deferEmail, getEmailStatus, markFailed, markSent, releaseForRetry } from '../emails/emails.repository';
 import type { SendEmailJob } from '../queue/email-queue';
+import { overflowSendTime } from '../scheduler/planner';
 import { sendEmail } from './mailer';
+import { reserveSenderSlot } from './sender-rate-limit';
 
 /**
  * Runs when a delayed job becomes due. Returns a short outcome string that BullMQ
  * stores as the job's result (visible in Bull Board later).
+ * `token` identifies this worker's lock on the job; BullMQ needs it for moveToDelayed.
  */
-export async function processSendEmail(job: Job<SendEmailJob>): Promise<string> {
+export async function processSendEmail(job: Job<SendEmailJob>, token?: string): Promise<string> {
   const { emailId } = job.data;
 
   // Step 1: claim. Only one worker can move this row from 'scheduled' to 'sending'.
@@ -25,7 +28,26 @@ export async function processSendEmail(job: Job<SendEmailJob>): Promise<string> 
     return `skipped (${status ?? 'deleted'})`;
   }
 
-  // Step 2: send, then record the outcome.
+  // Step 2: per-sender hourly cap, shared by all workers through Redis.
+  // We claim first, so only an email we're definitely about to send uses a slot.
+  const slot = await reserveSenderSlot(email.sender.id);
+  if (!slot.allowed) {
+    // Hour is full. Never drop or fail the email: push it to the next hour, keeping
+    // its place in line, and update the database first so Postgres stays the truth.
+    const runAt = overflowSendTime(email.scheduledAt.getTime(), slot.window);
+    await deferEmail(email.id, new Date(runAt));
+    await job.moveToDelayed(runAt, token);
+    console.log(`[worker] ${email.id} deferred to ${new Date(runAt).toISOString()} (${email.sender.email} hit ${slot.limit}/hour)`);
+    // Tells BullMQ "this job was moved on purpose": not completed, not failed.
+    throw new DelayedError();
+  }
+  if (slot.used === slot.limit) {
+    // Exactly one reservation per sender per hour sees used === limit, because the
+    // Lua script is atomic, so this fires once. Phase 5 posts it to Slack.
+    console.log(`[worker] ${email.sender.email} reached its limit of ${slot.limit} emails this hour`);
+  }
+
+  // Step 3: send, then record the outcome.
   try {
     const { messageId, previewUrl } = await sendEmail(email);
     await markSent(email.id, messageId, previewUrl);
