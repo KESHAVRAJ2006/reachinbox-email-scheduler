@@ -4,7 +4,7 @@ A full-stack email campaign scheduler. You upload a CSV of recipients, pick a se
 
 Built for the ReachInbox take-home assignment.
 
-> **Demo video:** _add link here_
+🎥 **Demo video:** https://youtu.be/yeyLekNiiMo
 
 ---
 
