@@ -8,6 +8,7 @@ import { pool } from './db/pool';
 import { createRedisConnection, redis } from './lib/redis';
 import { closeEmailQueue, EMAIL_QUEUE, type SendEmailJob } from './queue/email-queue';
 import { reconcileQueue } from './scheduler/reconciler';
+import { ensureEmailIndex } from './search/email-index';
 import { closeTransports } from './worker/mailer';
 import { processSendEmail } from './worker/send-email.processor';
 
@@ -15,6 +16,7 @@ async function main() {
   // The worker may boot before the API, so it makes sure the schema exists too.
   // The advisory lock in runMigrations stops the two from clashing.
   await runMigrations();
+  await ensureEmailIndex().catch((err: Error) => console.warn('[search] index not ready:', err.message));
 
   const { pendingChecked, interrupted } = await reconcileQueue();
   console.log(`[worker] reconciled: ${pendingChecked} pending email(s) ensured in queue, ${interrupted} interrupted send(s) marked failed`);

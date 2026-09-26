@@ -3,6 +3,7 @@ import { pool } from '../db/pool';
 import { HttpError } from '../http/errors';
 import { enqueueEmails } from '../queue/email-queue';
 import { planSendTimes } from '../scheduler/planner';
+import { indexEmailDocs, indexInBackground } from '../search/email-index';
 import { findSenderById } from '../senders/senders.repository';
 
 const MAX_RECIPIENTS = 10_000;
@@ -40,7 +41,7 @@ export async function scheduleCampaign(userId: string, input: CreateCampaignInpu
   // 1) Save everything in ONE transaction: the campaign and all its emails exist, or none do.
   const client = await pool.connect();
   let campaignId: string;
-  let emails: { id: string; scheduledAt: Date }[];
+  let emails: { id: string; recipient: string; scheduledAt: Date }[];
   try {
     await client.query('BEGIN');
     const campaign = await client.query<{ id: string }>(
@@ -53,14 +54,14 @@ export async function scheduleCampaign(userId: string, input: CreateCampaignInpu
 
     // unnest() turns two parallel arrays into rows: one INSERT for thousands of
     // emails instead of thousands of round-trips.
-    const inserted = await client.query<{ id: string; scheduled_at: Date }>(
+    const inserted = await client.query<{ id: string; recipient: string; scheduled_at: Date }>(
       `INSERT INTO emails (campaign_id, user_id, sender_id, recipient, scheduled_at)
        SELECT $1, $2, $3, recipient, scheduled_at
          FROM unnest($4::text[], $5::timestamptz[]) AS planned(recipient, scheduled_at)
-       RETURNING id, scheduled_at`,
+       RETURNING id, recipient, scheduled_at`,
       [campaignId, userId, sender.id, recipients, sendTimes.map((t) => new Date(t))],
     );
-    emails = inserted.rows.map((row) => ({ id: row.id, scheduledAt: row.scheduled_at }));
+    emails = inserted.rows.map((row) => ({ id: row.id, recipient: row.recipient, scheduledAt: row.scheduled_at }));
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');
@@ -79,6 +80,25 @@ export async function scheduleCampaign(userId: string, input: CreateCampaignInpu
     console.error('[campaigns] saved but could not enqueue:', (err as Error).message);
     throw new HttpError(503, 'Campaign saved, but the queue is unavailable. It will be queued automatically when the worker restarts.');
   }
+
+  // 3) Make the new emails searchable. Best effort: search is a copy, not the truth.
+  indexInBackground('index new campaign', () =>
+    indexEmailDocs(
+      emails.map((email) => ({
+        id: email.id,
+        userId,
+        campaignId,
+        senderEmail: sender.email,
+        recipient: email.recipient,
+        subject: input.subject,
+        body: input.body,
+        status: 'scheduled',
+        scheduledAt: email.scheduledAt.toISOString(),
+        sentAt: null,
+        previewUrl: null,
+      })),
+    ),
+  );
 
   return {
     campaignId,

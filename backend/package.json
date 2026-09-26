@@ -17,10 +17,13 @@
     "migrate": "tsx src/db/migrate.ts",
     "seed:senders": "tsx src/senders/seed-senders.ts",
     "loadtest": "tsx src/tools/load-test.ts",
+    "reindex": "tsx src/tools/reindex.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@bull-board/api": "^9.10.1",
+    "@bull-board/express": "^9.10.1",
     "@elastic/elasticsearch": "^8.19.2",
     "bullmq": "^6.3.9",
     "cors": "^2.8.6",

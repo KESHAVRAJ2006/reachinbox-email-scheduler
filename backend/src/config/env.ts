@@ -38,6 +38,10 @@ const envSchema = z.object({
   SLACK_CLIENT_SECRET: z.string().min(1),
   SLACK_REDIRECT_URI: z.url().refine((url) => url.startsWith('https://'), 'Slack only accepts https:// redirect URLs'),
 
+  // Login for the Bull Board queue dashboard at /admin/queues.
+  BULL_BOARD_USERNAME: z.string().min(1),
+  BULL_BOARD_PASSWORD: z.string().min(12, 'must be at least 12 characters'),
+
   // Throughput settings. No defaults on purpose: rate limits must be chosen explicitly
   // per environment, never silently baked into the code.
   WORKER_CONCURRENCY: positiveInt,

@@ -4,17 +4,29 @@ import helmet from 'helmet';
 import { env } from './config/env';
 import { requestLogger } from './http/request-logger';
 import { errorHandler, notFound } from './http/errors';
+import { BULL_BOARD_PATH, createBullBoardRouter, requireDashboardLogin } from './admin/bull-board';
 import { healthRouter } from './routes/health';
 import { authRouter } from './routes/auth';
 import { campaignsRouter } from './routes/campaigns';
+import { slackRouter } from './routes/slack';
 
 // Builds the Express app without starting it. Keeping this separate from server.ts
 // means tests can use the app without opening a real port.
 export function createApp() {
   const app = express();
 
+  // Behind ngrok (or any proxy) the real client address and protocol arrive in
+  // X-Forwarded-* headers. Trust exactly one proxy hop.
+  app.set('trust proxy', 1);
+
   // First, so even requests rejected by later middleware (e.g. bad JSON) get logged.
   app.use(requestLogger);
+
+  // Queue dashboard. Mounted BEFORE helmet: Bull Board's UI loads its own scripts
+  // and styles, which helmet's strict Content-Security-Policy would block. It is
+  // still protected by its own login.
+  app.use(BULL_BOARD_PATH, requireDashboardLogin, createBullBoardRouter());
+
   // Security headers (no-sniff, frame blocking, no X-Powered-By, ...).
   app.use(helmet());
   // Only our frontend's origin may call the API from a browser. We send the JWT in an
@@ -25,6 +37,7 @@ export function createApp() {
 
   app.use('/api/health', healthRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/integrations/slack', slackRouter);
   app.use('/api', campaignsRouter);
 
   // These two must come last: the 404 handler catches anything no route matched,
