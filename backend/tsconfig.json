@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    // Language level of the emitted JavaScript. Node 20+ supports all of ES2023.
+    "target": "es2023",
+    // Follow Node's own module rules. package.json says "type": "commonjs",
+    // so our files compile to require() and relative imports need no ".js" extension.
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "rootDir": "src",
+    "outDir": "dist",
+    // Only load Node's type definitions globally (newer TypeScript loads none by default).
+    "types": ["node"],
+    // Catch null/undefined mistakes and implicit "any" at compile time.
+    "strict": true,
+    // Lets `import express from 'express'` work with CommonJS packages.
+    "esModuleInterop": true,
+    // Don't type-check library .d.ts files: faster, and their bugs aren't ours.
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    // Stack traces from dist/ point back to the .ts line.
+    "sourceMap": true
+  },
+  "include": ["src"]
+}
