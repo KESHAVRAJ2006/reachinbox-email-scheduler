@@ -43,9 +43,7 @@ export function onUnauthorized(handler: () => void) {
 // turns non-2xx responses into ApiError.
 async function request<T>(path: string, options: { method?: string; json?: unknown } = {}): Promise<T> {
   const token = tokenStore.get();
-  // When the API is reached through a free ngrok tunnel, ngrok answers browser requests
-  // with an HTML warning page unless this header is present. Harmless for any other host.
-  const headers: Record<string, string> = { 'ngrok-skip-browser-warning': 'true' };
+  const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
   if (options.json !== undefined) headers['Content-Type'] = 'application/json';
 
@@ -83,3 +81,10 @@ export const api = {
 
 // Full-page navigation to the API, which redirects to Google.
 export const googleLoginUrl = `${API_URL}/api/auth/google`;
+
+// Free hosting puts an idle API to sleep, and the first request then takes up to a
+// minute. The login page calls this on load, so the API is usually awake by the time
+// the user clicks "Continue with Google". Failures are ignored: this is only a nudge.
+export function wakeApi(): void {
+  fetch(`${API_URL}/api/health`).catch(() => undefined);
+}

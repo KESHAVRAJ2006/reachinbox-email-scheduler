@@ -14,14 +14,26 @@ if (fs.existsSync(envFile)) {
 // Every env var is a string. z.coerce.number() turns "5" into 5 and rejects "abc".
 const positiveInt = z.coerce.number().int().positive();
 
+// Hosting dashboards often save an unset variable as "". Treat that as "not set".
+const optional = <T extends z.ZodType>(schema: T) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  FRONTEND_URL: z.url(),
+  // Used for CORS and redirects, both of which compare against the exact origin,
+  // so a trailing slash copied from the browser bar is removed.
+  FRONTEND_URL: z.url().transform((url) => url.replace(/\/+$/, '')),
 
   DATABASE_URL: z.url(),
   REDIS_URL: z.url(),
-  ELASTICSEARCH_URL: z.url(),
+  // Optional: without it, search falls back to a plain Postgres query. Free hosting
+  // rarely includes Elasticsearch, and Postgres stays the source of truth either way.
+  ELASTICSEARCH_URL: optional(z.url()),
+
+  // "true" runs the BullMQ worker inside the API process. Lets the whole backend
+  // run as one service on hosts whose free tier has no background workers.
+  RUN_WORKER_IN_API: z.stringbool().default(false),
 
   // 32+ characters so the JWT signature can't be brute-forced.
   JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),

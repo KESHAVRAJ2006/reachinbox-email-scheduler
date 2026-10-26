@@ -7,6 +7,7 @@ import { redis } from './lib/redis';
 import { elastic } from './lib/elastic';
 import { closeEmailQueue } from './queue/email-queue';
 import { ensureEmailIndex } from './search/email-index';
+import { startWorker } from './worker/start-worker';
 
 async function main() {
   // Bring the schema up to date before accepting traffic. Safe to run on every boot:
@@ -27,6 +28,9 @@ async function main() {
     console.log(`[api] listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
   });
 
+  // Single-service mode for free hosting: this process also sends the emails.
+  const stopWorker = env.RUN_WORKER_IN_API ? await startWorker() : undefined;
+
   // Graceful shutdown on Ctrl+C (SIGINT) or a platform stop (SIGTERM):
   // stop accepting new connections, let in-flight requests finish, then close pools.
   let shuttingDown = false;
@@ -36,11 +40,13 @@ async function main() {
     console.log(`[api] ${signal} received, shutting down`);
 
     server.close(async () => {
-      await Promise.allSettled([closeEmailQueue(), pool.end(), redis.quit(), elastic.close()]);
+      // The worker first, so in-flight sends finish while the pools are still open.
+      await stopWorker?.();
+      await Promise.allSettled([closeEmailQueue(), pool.end(), redis.quit(), elastic?.close()]);
       process.exit(0);
     });
     // If something hangs, don't wait forever. unref() stops this timer keeping Node alive.
-    setTimeout(() => process.exit(1), 10_000).unref();
+    setTimeout(() => process.exit(1), stopWorker ? 30_000 : 10_000).unref();
   };
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));

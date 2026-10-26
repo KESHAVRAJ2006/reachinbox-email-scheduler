@@ -1,0 +1,77 @@
+# Render Blueprint: deploys the backend as ONE always-on web service (API + worker in
+# the same process) plus a free Redis-compatible Key Value instance.
+#
+#   Render dashboard -> New -> Blueprint -> pick this repo
+#
+# Postgres is external (Neon). Variables marked `sync: false` are secrets: Render asks
+# for them when the Blueprint is first created. See DEPLOYMENT.md for every value.
+#
+# Both services must be in the same region so the API can reach Redis over Render's
+# private network. Pick the region closest to your Neon database.
+
+services:
+  - type: web
+    name: email-scheduler-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: backend
+    # --include=dev: TypeScript is a dev dependency, and NODE_ENV=production would skip it.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # The free plan has no background workers, so the API process sends emails too.
+      - key: RUN_WORKER_IN_API
+        value: "true"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: email-scheduler-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: BULL_BOARD_USERNAME
+        value: admin
+      - key: BULL_BOARD_PASSWORD
+        generateValue: true
+      - key: WORKER_CONCURRENCY
+        value: "5"
+      - key: MIN_DELAY_BETWEEN_SENDS_MS
+        value: "2000"
+      - key: MAX_EMAILS_PER_HOUR_PER_SENDER
+        value: "200"
+      # Secrets and URLs you fill in when creating the Blueprint:
+      - key: DATABASE_URL # Neon DIRECT connection string (host without "-pooler")
+        sync: false
+      - key: FRONTEND_URL # e.g. https://your-app.vercel.app
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALLBACK_URL # https://<this-service>.onrender.com/api/auth/google/callback
+        sync: false
+      - key: SLACK_CLIENT_ID
+        sync: false
+      - key: SLACK_CLIENT_SECRET
+        sync: false
+      - key: SLACK_REDIRECT_URI # https://<this-service>.onrender.com/api/integrations/slack/callback
+        sync: false
+      - key: ELASTICSEARCH_URL # optional; leave empty to search with Postgres
+        sync: false
+
+  - type: keyvalue
+    name: email-scheduler-redis
+    plan: free
+    region: singapore
+    # BullMQ requires this: an evicted key would be a lost job.
+    maxmemoryPolicy: noeviction
+    # Empty list = reachable only from your own Render services, never the internet.
+    ipAllowList: []

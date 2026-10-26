@@ -1,7 +1,8 @@
+import { useEffect } from 'react';
 import { Navigate, useSearchParams } from 'react-router';
 import { CalendarClock, Gauge, Mail, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
-import { googleLoginUrl } from '../lib/api';
+import { googleLoginUrl, wakeApi } from '../lib/api';
 
 // Codes the API (or our own logout) puts in ?error=...
 const ERROR_MESSAGES: Record<string, string> = {
@@ -23,6 +24,8 @@ export default function LoginPage() {
   const { status } = useAuth();
   const [params] = useSearchParams();
   const error = params.get('error');
+
+  useEffect(wakeApi, []);
 
   if (status === 'ready') return <Navigate to="/" replace />;
 
@@ -71,6 +74,7 @@ export default function LoginPage() {
             Continue with Google
           </a>
           <p className="mt-6 text-center text-xs text-slate-400">We only read your name, email and profile picture.</p>
+          <p className="mt-2 text-center text-xs text-slate-400">The demo server sleeps when idle, so the first sign-in can take up to a minute.</p>
         </div>
       </div>
     </div>

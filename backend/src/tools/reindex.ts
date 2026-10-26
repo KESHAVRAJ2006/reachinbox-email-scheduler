@@ -13,6 +13,7 @@ import { EMAIL_INDEX, ensureEmailIndex, indexEmailDocs, type EmailDoc } from '..
 const BATCH_SIZE = 1_000;
 
 async function main() {
+  if (!elastic) throw new Error('ELASTICSEARCH_URL is not set, so there is no search index to rebuild');
   if (process.argv.includes('--fresh')) {
     await elastic.indices.delete({ index: EMAIL_INDEX, ignore_unavailable: true });
     console.log(`Deleted index "${EMAIL_INDEX}"`);
@@ -67,6 +68,6 @@ main()
     process.exitCode = 1;
   })
   .finally(async () => {
-    await elastic.close();
+    await elastic?.close();
     await pool.end();
   });

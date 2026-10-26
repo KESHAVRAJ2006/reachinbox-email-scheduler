@@ -32,14 +32,15 @@ export const healthRouter = Router();
 // GET /api/health: 200 if every dependency answers, 503 if any is down.
 // 503 lets a load balancer or uptime monitor tell "broken" from "fine".
 healthRouter.get('/', async (_req, res) => {
-  // The three probes run in parallel, so the total time is the slowest one, not the sum.
+  // The probes run in parallel, so the total time is the slowest one, not the sum.
+  // Elasticsearch is only checked when it's configured.
   const [postgres, redisResult, elasticsearch] = await Promise.all([
     check(() => pool.query('SELECT 1')),
     check(() => redis.ping()),
-    check(() => elastic.ping()),
+    elastic ? check(() => elastic!.ping()) : undefined,
   ]);
 
-  const checks = { postgres, redis: redisResult, elasticsearch };
+  const checks = { postgres, redis: redisResult, ...(elasticsearch && { elasticsearch }) };
   const healthy = Object.values(checks).every((result) => result.ok);
 
   res.status(healthy ? 200 : 503).json({

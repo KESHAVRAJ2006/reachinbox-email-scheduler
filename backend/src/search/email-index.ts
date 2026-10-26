@@ -1,4 +1,5 @@
 import { elastic } from '../lib/elastic';
+import { pool } from '../db/pool';
 import type { EmailStatus, EmailTab } from '../emails/emails.repository';
 
 /**
@@ -6,6 +7,8 @@ import type { EmailStatus, EmailTab } from '../emails/emails.repository';
  * of truth. If an index write fails (ES down), sending carries on and
  * `npm run reindex` rebuilds the copy from Postgres. That's why every write here is
  * "best effort": it logs and never throws into the scheduling/sending path.
+ *
+ * Without ELASTICSEARCH_URL, writes are skipped and search queries Postgres directly.
  */
 export const EMAIL_INDEX = 'emails';
 
@@ -43,6 +46,7 @@ const MAPPINGS = {
 
 // Safe to call on every start. Creates the index only if it doesn't exist yet.
 export async function ensureEmailIndex(): Promise<void> {
+  if (!elastic) return;
   if (await elastic.indices.exists({ index: EMAIL_INDEX })) return;
   try {
     await elastic.indices.create({ index: EMAIL_INDEX, mappings: MAPPINGS });
@@ -56,7 +60,7 @@ export async function ensureEmailIndex(): Promise<void> {
 // Many documents in one request. _id = email id, so writing the same email again
 // overwrites it instead of creating a duplicate.
 export async function indexEmailDocs(docs: ({ id: string } & EmailDoc)[]): Promise<void> {
-  if (docs.length === 0) return;
+  if (!elastic || docs.length === 0) return;
   const result = await elastic.bulk({
     operations: docs.flatMap(({ id, ...doc }) => [{ index: { _index: EMAIL_INDEX, _id: id } }, doc]),
   });
@@ -69,6 +73,7 @@ export async function indexEmailDocs(docs: ({ id: string } & EmailDoc)[]): Promi
 
 // Changes a few fields of one document (e.g. status -> sent), leaving the rest.
 export async function updateEmailDoc(id: string, changes: Partial<EmailDoc>): Promise<void> {
+  if (!elastic) return;
   await elastic.update({ index: EMAIL_INDEX, id, doc: changes, retry_on_conflict: 3 });
 }
 
@@ -88,6 +93,8 @@ export async function searchEmails(
   userId: string,
   opts: { q: string; tab?: EmailTab; limit: number; offset: number },
 ): Promise<{ total: number; hits: SearchHit[] }> {
+  if (!elastic) return searchEmailsInPostgres(userId, opts);
+
   const result = await elastic.search<EmailDoc>({
     index: EMAIL_INDEX,
     from: opts.offset,
@@ -143,4 +150,78 @@ export async function searchEmails(
       highlight: { subject: hit.highlight?.subject?.[0], body: hit.highlight?.body?.[0] },
     })),
   };
+}
+
+/**
+ * Fallback when Elasticsearch isn't configured. Every word of the query must appear
+ * (case-insensitive substring) in the subject, recipient or body. No typo tolerance
+ * or ranking, but the response has the same shape, highlights included.
+ */
+async function searchEmailsInPostgres(
+  userId: string,
+  opts: { q: string; tab?: EmailTab; limit: number; offset: number },
+): Promise<{ total: number; hits: SearchHit[] }> {
+  const words = opts.q.split(/\s+/).filter(Boolean).slice(0, 10);
+  // Escape LIKE wildcards so "%" or "_" typed by the user match literally.
+  const patterns = words.map((word) => `%${word.replace(/[\\%_]/g, '\\$&')}%`);
+
+  const { rows } = await pool.query(
+    `SELECT e.id, e.user_id, e.campaign_id, s.email AS sender_email, e.recipient, cp.subject, cp.body,
+            e.status, e.scheduled_at, e.sent_at, e.preview_url, count(*) OVER () AS total
+       FROM emails e
+       JOIN campaigns cp ON cp.id = e.campaign_id
+       JOIN senders s ON s.id = e.sender_id
+      WHERE e.user_id = $1
+        AND ($2::text[] IS NULL OR e.status = ANY($2))
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest($3::text[]) AS p(pattern)
+           WHERE NOT (cp.subject ILIKE p.pattern OR e.recipient ILIKE p.pattern OR cp.body ILIKE p.pattern)
+        )
+      ORDER BY e.scheduled_at DESC
+      LIMIT $4 OFFSET $5`,
+    [userId, opts.tab ? TAB_STATUSES[opts.tab] : null, patterns, opts.limit, opts.offset],
+  );
+
+  return {
+    total: rows.length ? Number(rows[0].total) : 0,
+    hits: rows.map((row) => ({
+      id: row.id,
+      score: 0,
+      userId: row.user_id,
+      campaignId: row.campaign_id,
+      senderEmail: row.sender_email,
+      recipient: row.recipient,
+      subject: row.subject,
+      body: row.body,
+      status: row.status,
+      scheduledAt: row.scheduled_at.toISOString(),
+      sentAt: row.sent_at ? row.sent_at.toISOString() : null,
+      previewUrl: row.preview_url,
+      highlight: { subject: highlight(row.subject, words), body: highlightSnippet(row.body, words) },
+    })),
+  };
+}
+
+// Same contract as Elasticsearch's encoder "html": the text is escaped first and only
+// our own <mark> tags are real HTML, so the frontend can render it safely.
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+}
+
+function highlight(text: string, words: string[]): string | undefined {
+  const alternatives = words.map((word) => word.replace(/[.*+?^$()|[\]{}\\]/g, '\\$&')).join('|');
+  const pattern = new RegExp(`(${alternatives})`, 'i');
+  // With a capture group, split() keeps the matches at the odd positions.
+  const parts = text.split(pattern);
+  if (parts.length === 1) return undefined;
+  return parts.map((part, i) => (i % 2 === 1 ? `<mark>${escapeHtml(part)}</mark>` : escapeHtml(part))).join('');
+}
+
+// About 120 characters of the body around the first match, like ES's fragment_size.
+function highlightSnippet(body: string, words: string[]): string | undefined {
+  const lower = body.toLowerCase();
+  const first = Math.min(...words.map((w) => lower.indexOf(w.toLowerCase())).filter((i) => i >= 0));
+  if (!Number.isFinite(first)) return undefined;
+  const start = Math.max(0, first - 40);
+  return highlight(body.slice(start, start + 120), words);
 }

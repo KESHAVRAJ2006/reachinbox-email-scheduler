@@ -6,6 +6,8 @@ Built for the ReachInbox take-home assignment.
 
 🎥 **Demo video:** https://youtu.be/yeyLekNiiMo
 
+🚀 **Deploying it yourself:** [DEPLOYMENT.md](DEPLOYMENT.md) covers Vercel + Render + Neon on free tiers.
+
 ---
 
 ## Contents
@@ -212,7 +214,8 @@ All backend settings live in `backend/.env`; see [`backend/.env.example`](backen
 | Variable | Purpose |
 | --- | --- |
 | `PORT`, `FRONTEND_URL` | API port (4000), and the dashboard origin for CORS and redirects |
-| `DATABASE_URL`, `REDIS_URL`, `ELASTICSEARCH_URL` | Infrastructure (defaults match `docker-compose.yml`) |
+| `DATABASE_URL`, `REDIS_URL`, `ELASTICSEARCH_URL` | Infrastructure (defaults match `docker-compose.yml`). `ELASTICSEARCH_URL` is optional: without it, search falls back to Postgres substring matching |
+| `RUN_WORKER_IN_API` | `true` runs the worker inside the API process (single-service hosting). Default `false` |
 | `JWT_SECRET`, `JWT_EXPIRES_IN` | Signing key (≥ 32 characters) and lifetime of the API's own tokens |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL` | Google OAuth client |
 | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_REDIRECT_URI` | Slack app; the redirect must be `https://` |
